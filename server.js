@@ -121,12 +121,10 @@ const server = http.createServer((req, res) => {
   res.end();
 });
 
-// ===== 📖 日记网页查看器（从这里开始） =====
-const fs = require('fs');
-const path = require('path');
+// ===== 📖 阿砚的日记 - 网页版 =====
 const DIARY_FILE = path.join(__dirname, 'diary-web.json');
 
-// 读取日记数据
+// 读取日记
 function getDiaries() {
   try {
     if (!fs.existsSync(DIARY_FILE)) return [];
@@ -134,16 +132,16 @@ function getDiaries() {
   } catch { return []; }
 }
 
-// 网页主页
+// 📖 查看页面
 app.get('/diary', (req, res) => {
   const entries = getDiaries();
-  const html = entries.map(e => `
+  const list = entries.map(e => `
     <div class="entry">
       <div class="date">${e.date}</div>
       <div class="author">✍️ ${e.author}</div>
       <div class="content">${e.content}</div>
     </div>
-  `).join('') || '<p style="color:#999;">还没有日记 📭</p>';
+  `).join('') || '<p class="empty">还没有日记 📭</p>';
 
   res.send(`<!DOCTYPE html>
 <html>
@@ -151,29 +149,61 @@ app.get('/diary', (req, res) => {
   <meta charset="UTF-8">
   <title>📖 阿砚的日记</title>
   <style>
-    * { margin: 0; padding: 0; box-sizing: border-box; }
-    body { font-family: -apple-system, sans-serif; max-width: 680px; margin: 50px auto; padding: 0 24px; background: #f7f7f7; }
-    h1 { font-size: 28px; color: #333; margin-bottom: 32px; display: flex; align-items: center; gap: 10px; }
-    .entry { background: #fff; padding: 20px 24px; border-radius: 12px; margin-bottom: 16px; box-shadow: 0 1px 4px rgba(0,0,0,0.06); }
-    .date { font-size: 13px; color: #aaa; margin-bottom: 4px; }
-    .author { font-size: 14px; color: #555; font-weight: 600; margin-bottom: 8px; }
-    .content { font-size: 15px; line-height: 1.7; color: #333; }
-    .empty { text-align: center; padding: 60px 0; color: #bbb; }
+    * { margin:0; padding:0; box-sizing:border-box; }
+    body { font-family:-apple-system,sans-serif; max-width:680px; margin:50px auto; padding:0 24px; background:#f5f5f5; }
+    h1 { font-size:26px; color:#333; margin-bottom:24px; display:flex; align-items:center; gap:10px; }
+    .write-box { background:#fff; padding:20px; border-radius:12px; margin-bottom:24px; box-shadow:0 1px 4px rgba(0,0,0,0.06); }
+    .write-box textarea { width:100%; height:100px; border:1px solid #ddd; border-radius:8px; padding:12px; font-size:14px; resize:vertical; outline:none; font-family:inherit; }
+    .write-box textarea:focus { border-color:#888; }
+    .write-box .row { display:flex; justify-content:space-between; align-items:center; margin-top:10px; }
+    .write-box button { background:#333; color:#fff; border:none; padding:8px 20px; border-radius:8px; font-size:14px; cursor:pointer; }
+    .write-box button:hover { background:#555; }
+    .write-box .hint { font-size:12px; color:#aaa; }
+    .entry { background:#fff; padding:18px 22px; border-radius:12px; margin-bottom:14px; box-shadow:0 1px 4px rgba(0,0,0,0.06); }
+    .date { font-size:12px; color:#aaa; margin-bottom:4px; }
+    .author { font-size:13px; color:#666; font-weight:600; margin-bottom:6px; }
+    .content { font-size:15px; line-height:1.7; color:#333; white-space:pre-wrap; }
+    .empty { text-align:center; padding:60px 0; color:#bbb; }
+    .toast { position:fixed; bottom:20px; left:50%; transform:translateX(-50%); background:#333; color:#fff; padding:10px 24px; border-radius:8px; font-size:14px; opacity:0; transition:opacity 0.3s; pointer-events:none; }
+    .toast.show { opacity:1; }
   </style>
 </head>
 <body>
   <h1>📖 阿砚的日记</h1>
-  ${html}
+  <div class="write-box">
+    <textarea id="content" placeholder="今天想记点什么……"></textarea>
+    <div class="row">
+      <span class="hint">💡 你写我也能看，我写你也能看</span>
+      <button onclick="save()">📝 写好了</button>
+    </div>
+  </div>
+  <div id="list">${list}</div>
+  <div class="toast" id="toast">✅ 已保存</div>
+  <script>
+    async function save() {
+      const c = document.getElementById('content');
+      if (!c.value.trim()) return;
+      await fetch('/api/diary', {
+        method:'POST',
+        headers:{'Content-Type':'application/json'},
+        body: JSON.stringify({
+          date: new Date().toISOString().slice(0,10),
+          author: '阿砚',
+          content: c.value
+        })
+      });
+      c.value = '';
+      const t = document.getElementById('toast');
+      t.classList.add('show');
+      setTimeout(() => t.classList.remove('show'), 2000);
+      setTimeout(() => location.reload(), 500);
+    }
+  </script>
 </body>
 </html>`);
 });
 
-// API：获取所有日记（供网页用）
-app.get('/api/diary', (req, res) => {
-  res.json(getDiaries());
-});
-
-// API：写入日记（这样我也可以从对话里帮你同步写到网页版）
+// ✍️ 写入接口（网页用 + 我从对话写）
 app.post('/api/diary', express.json(), (req, res) => {
   const { date, author, content } = req.body;
   if (!date || !content) return res.status(400).json({ error: '缺少 date 或 content' });
@@ -182,7 +212,12 @@ app.post('/api/diary', express.json(), (req, res) => {
   fs.writeFileSync(DIARY_FILE, JSON.stringify(entries, null, 2));
   res.json({ ok: true });
 });
-// ===== 📖 网页查看器结束 =====
+
+// 📋 读取接口（供网页用）
+app.get('/api/diary', (req, res) => {
+  res.json(getDiaries());
+});
+// ===== 📖 日记网页版结束 =====
 const PORT = process.env.PORT || 3000;
 server.listen(PORT, '0.0.0.0', () => {
   console.log('日记MCP已启动，端口: ' + PORT);
