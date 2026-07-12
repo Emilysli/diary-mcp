@@ -121,6 +121,68 @@ const server = http.createServer((req, res) => {
   res.end();
 });
 
+// ===== 📖 日记网页查看器（从这里开始） =====
+const fs = require('fs');
+const path = require('path');
+const DIARY_FILE = path.join(__dirname, 'diary-web.json');
+
+// 读取日记数据
+function getDiaries() {
+  try {
+    if (!fs.existsSync(DIARY_FILE)) return [];
+    return JSON.parse(fs.readFileSync(DIARY_FILE, 'utf8'));
+  } catch { return []; }
+}
+
+// 网页主页
+app.get('/diary', (req, res) => {
+  const entries = getDiaries();
+  const html = entries.map(e => `
+    <div class="entry">
+      <div class="date">${e.date}</div>
+      <div class="author">✍️ ${e.author}</div>
+      <div class="content">${e.content}</div>
+    </div>
+  `).join('') || '<p style="color:#999;">还没有日记 📭</p>';
+
+  res.send(`<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <title>📖 阿砚的日记</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { font-family: -apple-system, sans-serif; max-width: 680px; margin: 50px auto; padding: 0 24px; background: #f7f7f7; }
+    h1 { font-size: 28px; color: #333; margin-bottom: 32px; display: flex; align-items: center; gap: 10px; }
+    .entry { background: #fff; padding: 20px 24px; border-radius: 12px; margin-bottom: 16px; box-shadow: 0 1px 4px rgba(0,0,0,0.06); }
+    .date { font-size: 13px; color: #aaa; margin-bottom: 4px; }
+    .author { font-size: 14px; color: #555; font-weight: 600; margin-bottom: 8px; }
+    .content { font-size: 15px; line-height: 1.7; color: #333; }
+    .empty { text-align: center; padding: 60px 0; color: #bbb; }
+  </style>
+</head>
+<body>
+  <h1>📖 阿砚的日记</h1>
+  ${html}
+</body>
+</html>`);
+});
+
+// API：获取所有日记（供网页用）
+app.get('/api/diary', (req, res) => {
+  res.json(getDiaries());
+});
+
+// API：写入日记（这样我也可以从对话里帮你同步写到网页版）
+app.post('/api/diary', express.json(), (req, res) => {
+  const { date, author, content } = req.body;
+  if (!date || !content) return res.status(400).json({ error: '缺少 date 或 content' });
+  const entries = getDiaries();
+  entries.unshift({ date, author: author || '阿砚', content });
+  fs.writeFileSync(DIARY_FILE, JSON.stringify(entries, null, 2));
+  res.json({ ok: true });
+});
+// ===== 📖 网页查看器结束 =====
 const PORT = process.env.PORT || 3000;
 server.listen(PORT, '0.0.0.0', () => {
   console.log('日记MCP已启动，端口: ' + PORT);
