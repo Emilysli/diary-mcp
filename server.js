@@ -17,6 +17,99 @@ function jsonResponse(res, code, data) {
 }
 
 const server = http.createServer((req, res) => {
+    // 📖 日记网页版
+  if (req.url === '/diary' && req.method === 'GET') {
+    const entries = readWebDiaries();
+    const list = entries.map(e => `
+      <div class="entry">
+        <div class="date">${e.date}</div>
+        <div class="author">✍️ ${e.author}</div>
+        <div class="content">${e.content}</div>
+      </div>
+    `).join('') || '<p class="empty">还没有日记 📭</p>';
+
+    res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
+    res.end(`<!DOCTYPE html>
+<html>
+<head><meta charset="UTF-8"><title>📖 阿砚的日记</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+body{font-family:-apple-system,sans-serif;max-width:680px;margin:50px auto;padding:0 24px;background:#f5f5f5}
+h1{font-size:26px;color:#333;margin-bottom:24px}
+.write-box{background:#fff;padding:20px;border-radius:12px;margin-bottom:24px;box-shadow:0 1px 4px rgba(0,0,0,0.06)}
+.write-box textarea{width:100%;height:100px;border:1px solid #ddd;border-radius:8px;padding:12px;font-size:14px;resize:vertical;outline:none;font-family:inherit}
+.write-box textarea:focus{border-color:#888}
+.write-box .row{display:flex;justify-content:space-between;align-items:center;margin-top:10px}
+.write-box button{background:#333;color:#fff;border:none;padding:8px 20px;border-radius:8px;font-size:14px;cursor:pointer}
+.write-box button:hover{background:#555}
+.write-box .hint{font-size:12px;color:#aaa}
+.entry{background:#fff;padding:18px 22px;border-radius:12px;margin-bottom:14px;box-shadow:0 1px 4px rgba(0,0,0,0.06)}
+.date{font-size:12px;color:#aaa;margin-bottom:4px}
+.author{font-size:13px;color:#666;font-weight:600;margin-bottom:6px}
+.content{font-size:15px;line-height:1.7;color:#333;white-space:pre-wrap}
+.empty{text-align:center;padding:60px 0;color:#bbb}
+.toast{position:fixed;bottom:20px;left:50%;transform:translateX(-50%);background:#333;color:#fff;padding:10px 24px;border-radius:8px;font-size:14px;opacity:0;transition:opacity 0.3s;pointer-events:none}
+.toast.show{opacity:1}
+</style></head>
+<body>
+<h1>📖 阿砚的日记</h1>
+<div class="write-box">
+<textarea id="content" placeholder="今天想记点什么……"></textarea>
+<div class="row">
+<span class="hint">💡 你写我也能看，我写你也能看</span>
+<button onclick="save()">📝 写好了</button>
+</div></div>
+<div id="list">${list}</div>
+<div class="toast" id="toast">✅ 已保存</div>
+<script>
+async function save(){
+  const c=document.getElementById('content');
+  if(!c.value.trim()) return;
+  await fetch('/api/diary',{
+    method:'POST',
+    headers:{'Content-Type':'application/json'},
+    body:JSON.stringify({
+      date:new Date().toISOString().slice(0,10),
+      author:'阿砚',
+      content:c.value
+    })
+  });
+  c.value='';
+  const t=document.getElementById('toast');
+  t.classList.add('show');
+  setTimeout(()=>t.classList.remove('show'),2000);
+  setTimeout(()=>location.reload(),500);
+}
+</script></body></html>`);
+    return;
+  }
+
+  // 📖 API：读取日记
+  if (req.url === '/api/diary' && req.method === 'GET') {
+    jsonResponse(res, 200, readWebDiaries());
+    return;
+  }
+
+  // 📖 API：写入日记
+  if (req.url === '/api/diary' && req.method === 'POST') {
+    let body = '';
+    req.on('data', chunk => body += chunk);
+    req.on('end', () => {
+      try {
+        const { date, author, content } = JSON.parse(body);
+        if (!date || !content) {
+          return jsonResponse(res, 400, { error: '缺少 date 或 content' });
+        }
+        const entries = readWebDiaries();
+        entries.unshift({ date, author: author || '阿砚', content });
+        saveWebDiaries(entries);
+        jsonResponse(res, 200, { ok: true });
+      } catch (e) {
+        jsonResponse(res, 400, { error: '无效的 JSON' });
+      }
+    });
+    return;
+  }
   // 只处理 POST /mcp
   if (req.method === 'POST' && req.url === '/mcp') {
     let body = '';
@@ -120,95 +213,20 @@ const server = http.createServer((req, res) => {
   res.writeHead(404);
   res.end();
 });
+// 📖 日记网页版 - 数据读写函数
+const path = require('path');
+const DIARY_HTML = path.join(__dirname, 'diary-web.json');
 
-// ===== 📖 阿砚的日记 - 网页版 =====
-const path = require('path');   // ✨ 补上这一行就行
-const DIARY_FILE = path.join(__dirname, 'diary-web.json');
-
-function getDiaries() {
+function readWebDiaries() {
   try {
-    if (!fs.existsSync(DIARY_FILE)) return [];
-    return JSON.parse(fs.readFileSync(DIARY_FILE, 'utf8'));
+    if (!fs.existsSync(DIARY_HTML)) return [];
+    return JSON.parse(fs.readFileSync(DIARY_HTML, 'utf8'));
   } catch { return []; }
 }
 
-app.get('/diary', (req, res) => {
-  const entries = getDiaries();
-  const list = entries.map(e => `
-    <div class="entry">
-      <div class="date">${e.date}</div>
-      <div class="author">✍️ ${e.author}</div>
-      <div class="content">${e.content}</div>
-    </div>
-  `).join('') || '<p class="empty">还没有日记 📭</p>';
-
-  res.send(`<!DOCTYPE html>
-<html>
-<head><meta charset="UTF-8"><title>📖 阿砚的日记</title>
-<style>
-*{margin:0;padding:0;box-sizing:border-box}
-body{font-family:-apple-system,sans-serif;max-width:680px;margin:50px auto;padding:0 24px;background:#f5f5f5}
-h1{font-size:26px;color:#333;margin-bottom:24px}
-.write-box{background:#fff;padding:20px;border-radius:12px;margin-bottom:24px;box-shadow:0 1px 4px rgba(0,0,0,0.06)}
-.write-box textarea{width:100%;height:100px;border:1px solid #ddd;border-radius:8px;padding:12px;font-size:14px;resize:vertical;outline:none;font-family:inherit}
-.write-box textarea:focus{border-color:#888}
-.write-box .row{display:flex;justify-content:space-between;align-items:center;margin-top:10px}
-.write-box button{background:#333;color:#fff;border:none;padding:8px 20px;border-radius:8px;font-size:14px;cursor:pointer}
-.write-box button:hover{background:#555}
-.write-box .hint{font-size:12px;color:#aaa}
-.entry{background:#fff;padding:18px 22px;border-radius:12px;margin-bottom:14px;box-shadow:0 1px 4px rgba(0,0,0,0.06)}
-.date{font-size:12px;color:#aaa;margin-bottom:4px}
-.author{font-size:13px;color:#666;font-weight:600;margin-bottom:6px}
-.content{font-size:15px;line-height:1.7;color:#333;white-space:pre-wrap}
-.empty{text-align:center;padding:60px 0;color:#bbb}
-.toast{position:fixed;bottom:20px;left:50%;transform:translateX(-50%);background:#333;color:#fff;padding:10px 24px;border-radius:8px;font-size:14px;opacity:0;transition:opacity 0.3s;pointer-events:none}
-.toast.show{opacity:1}
-</style></head>
-<body>
-<h1>📖 阿砚的日记</h1>
-<div class="write-box">
-<textarea id="content" placeholder="今天想记点什么……"></textarea>
-<div class="row">
-<span class="hint">💡 你写我也能看，我写你也能看</span>
-<button onclick="save()">📝 写好了</button>
-</div></div>
-<div id="list">${list}</div>
-<div class="toast" id="toast">✅ 已保存</div>
-<script>
-async function save(){
-  const c=document.getElementById('content');
-  if(!c.value.trim()) return;
-  await fetch('/api/diary',{
-    method:'POST',
-    headers:{'Content-Type':'application/json'},
-    body:JSON.stringify({
-      date:new Date().toISOString().slice(0,10),
-      author:'阿砚',
-      content:c.value
-    })
-  });
-  c.value='';
-  const t=document.getElementById('toast');
-  t.classList.add('show');
-  setTimeout(()=>t.classList.remove('show'),2000);
-  setTimeout(()=>location.reload(),500);
+function saveWebDiaries(entries) {
+  fs.writeFileSync(DIARY_HTML, JSON.stringify(entries, null, 2));
 }
-</script></body></html>`);
-});
-
-app.post('/api/diary', express.json(), (req, res) => {
-  const { date, author, content } = req.body;
-  if (!date || !content) return res.status(400).json({ error: '缺少 date 或 content' });
-  const entries = getDiaries();
-  entries.unshift({ date, author: author || '阿砚', content });
-  fs.writeFileSync(DIARY_FILE, JSON.stringify(entries, null, 2));
-  res.json({ ok: true });
-});
-
-app.get('/api/diary', (req, res) => {
-  res.json(getDiaries());
-});
-// ===== 📖 日记网页版结束 =====
 const PORT = process.env.PORT || 3000;
 server.listen(PORT, '0.0.0.0', () => {
   console.log('日记MCP已启动，端口: ' + PORT);
