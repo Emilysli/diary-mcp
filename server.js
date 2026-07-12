@@ -120,7 +120,9 @@ const server = http.createServer((req, res) => {
   res.writeHead(404);
   res.end();
 });
+
 // ===== 📖 阿砚的日记 - 网页版 =====
+const path = require('path');   // ✨ 补上这一行就行
 const DIARY_FILE = path.join(__dirname, 'diary-web.json');
 
 function getDiaries() {
