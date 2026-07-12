@@ -214,18 +214,25 @@ async function save(){
   res.end();
 });
 // 📖 日记网页版 - 数据读写函数
-const path = require('path');
-const DIARY_HTML = path.join(__dirname, 'diary-web.json');
-
 function readWebDiaries() {
-  try {
-    if (!fs.existsSync(DIARY_HTML)) return [];
-    return JSON.parse(fs.readFileSync(DIARY_HTML, 'utf8'));
-  } catch { return []; }
+  const data = readData();
+  const result = [];
+  for (const date of Object.keys(data)) {
+    for (const entry of data[date]) {
+      result.push({ date, author: entry.author, content: entry.content });
+    }
+  }
+  return result.reverse();
 }
 
 function saveWebDiaries(entries) {
-  fs.writeFileSync(DIARY_HTML, JSON.stringify(entries, null, 2));
+  // 把数组格式转换成 MCP 的对象格式，覆盖写入
+  const data = {};
+  for (const e of entries) {
+    if (!data[e.date]) data[e.date] = [];
+    data[e.date].push({ author: e.author, content: e.content });
+  }
+  saveData(data);
 }
 const PORT = process.env.PORT || 3000;
 server.listen(PORT, '0.0.0.0', () => {
